@@ -390,20 +390,28 @@ Vue.createApp({
                         title: str,
                         status: ''
                     });
+                } else if (str.startsWith('#EXT-X-KEY')) {
+                    const keyMatch = str.match(/METHOD=([^,]+)(?:,URI="([^"]+)")?(?:,IV=([^,]+))?/);
+                    if (keyMatch) {
+                        task.aesConf.method = keyMatch[1];
+                        task.aesConf.uri = keyMatch[2] ? this.applyURL(keyMatch[2], task.url) : '';
+                        task.aesConf.iv = keyMatch[3] ? this.parseIV(keyMatch[3]) : null; // Convert IV to Uint8Array
+                    }
                 }
             });
 
             // 仅获取视频片段数
-            if (true === onlyGetRange) {
+            if (onlyGetRange) {
                 this.rangeDownload.isShowRange = true;
                 this.rangeDownload.endSegment = task.tsUrlList.length;
                 this.rangeDownload.targetSegment = task.tsUrlList.length;
                 this.showModal('modal-range');
                 return;
             } else {
-                let startSegment = Math.max(task.rangeDownload.startSegment || 1, 1); // 最小为 1
+                // Setting up the start and end segments
+                let startSegment = Math.max(task.rangeDownload.startSegment || 1, 1);
                 let endSegment = Math.max(task.rangeDownload.endSegment || task.tsUrlList.length, 1);
-                startSegment = Math.min(startSegment, task.tsUrlList.length); // 最大为this.tsUrlList.length
+                startSegment = Math.min(startSegment, task.tsUrlList.length);
                 endSegment = Math.min(endSegment, task.tsUrlList.length);
                 task.rangeDownload.startSegment = Math.min(startSegment, endSegment);
                 task.rangeDownload.endSegment = Math.max(startSegment, endSegment);
@@ -411,10 +419,10 @@ Vue.createApp({
                 task.downloadIndex = task.rangeDownload.startSegment - 1;
             }
 
-            // 获取需要下载的MP4视频长度
+            // Calculate total duration
             let infoIndex = 0;
             m3u8Str.split('\n').forEach(item => {
-                if (item.toUpperCase().indexOf('#EXTINF:') > -1) { // 计算视频总时长，设置mp4信息时使用
+                if (item.toUpperCase().indexOf('#EXTINF:') > -1) {
                     infoIndex++;
                     if (task.rangeDownload.startSegment <= infoIndex && infoIndex <= task.rangeDownload.endSegment) {
                         task.durationSecond += parseFloat(item.split('#EXTINF:')[1]);
@@ -422,22 +430,46 @@ Vue.createApp({
                 }
             });
 
-            // 检测视频AES加密
-            if (m3u8Str.indexOf('#EXT-X-KEY') > -1) {
-                task.aesConf.method = (m3u8Str.match(/(.*METHOD=([^,\s]+))/) || ['', '', ''])[2];
-                task.aesConf.uri = (m3u8Str.match(/(.*URI="([^"]+))"/) || ['', '', ''])[2];
-                task.aesConf.iv = (m3u8Str.match(/(.*IV=([^,\s]+))/) || ['', '', ''])[2];
-                task.aesConf.iv = task.aesConf.iv ? task.aesConf.stringToBuffer(task.aesConf.iv) : '';
-                task.aesConf.uri = this.applyURL(task.aesConf.uri, task.url);
-
+            // Check for AES encryption
+            if (task.aesConf.method && task.aesConf.method !== 'NONE') {
                 this.getAES(task);
-            } else if (task.tsUrlList.length > 0) {
+            } else {
                 this.addTask(task);
                 this.downloadTS();
-            } else {
-                this.error('资源为空，请查看链接是否有效');
-                this.closeModal('modal-add');
             }
+        },
+
+        // Parse IV string into Uint8Array
+        parseIV(ivString) {
+            const hex = ivString.replace(/^0x/, '');
+            return new Uint8Array(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+        },
+
+        // Get AES key
+        getAES(task) {
+            let loading = this.loading('正在获取视频解密信息...');
+            this.loadingIndex = loading;
+            this.ajax({
+                type: 'file',
+                url: task.aesConf.uri,
+                success: (key) => {
+                    this.loading(false, loading);
+                    this.loadingIndex = null;
+                    task.aesConf.key = key;
+                    task.aesConf.decryption = new AESDecryptor();
+                    task.aesConf.decryption.constructor();
+                    task.aesConf.decryption.expandKey(task.aesConf.key);
+
+                    // Add task to the task list
+                    this.addTask(task);
+                    this.downloadTS();
+                },
+                fail: () => {
+                    this.loading(false, loading);
+                    this.loadingIndex = null;
+                    this.error('视频解密失败');
+                }
+            });
         },
 
         // 选择流
@@ -706,7 +738,6 @@ Vue.createApp({
 
         // 下载分片
         downloadTS() {
-            // 设置为下载中
             this.currTask.status = 'downloading';
 
             let download = () => {
@@ -742,16 +773,56 @@ Vue.createApp({
                         }
                     });
                     this.currTask.requests.push(request);
-                } else if (this.currTask.downloadIndex < this.currTask.rangeDownload.endSegment) { // 跳过已经成功的片段
+                } else if (this.currTask.downloadIndex < this.currTask.rangeDownload.endSegment) {
                     !isPause && download();
                 }
             };
 
-            // 建立多少个 ajax 线程
             for (let i = 0; i < Math.min(6, this.currTask.rangeDownload.targetSegment - this.currTask.finishNum); i++) {
                 download();
             }
         },
+
+        // Handle TS segments with AES decryption
+        dealTS(file, index, callback) {
+            const data = this.currTask.aesConf.method !== 'NONE' ? this.aesDecrypt(file, index) : file;
+
+            // MP4 transcoding
+            this.conversionMp4(data, index, (afterData) => {
+                this.currTask.mediaFileList[index - this.currTask.rangeDownload.startSegment + 1] = afterData;
+                this.currTask.finishList[index].status = 'is-success';
+                this.currTask.finishNum++;
+
+                if (this.currTask.streamWriter) {
+                    for (let index = this.currTask.streamDownloadIndex; index < this.currTask.mediaFileList.length; index++) {
+                        if (this.currTask.mediaFileList[index]) {
+                            this.currTask.streamWriter.write(new Uint8Array(this.currTask.mediaFileList[index]));
+                            this.currTask.mediaFileList[index] = null;
+                            this.currTask.streamDownloadIndex = index + 1;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    if (this.currTask.streamDownloadIndex >= this.currTask.rangeDownload.targetSegment) {
+                        this.currTask.status = 'done';
+                        this.currTask.requests = [];
+                        this.currTask.streamWriter.close();
+                        this.nextTask();
+                    }
+                } else if (this.currTask.finishNum === this.currTask.rangeDownload.targetSegment) {
+                    this.currTask.status = 'done';
+                    this.currTask.requests = [];
+                    this.nextTask();
+                    this.downloadFile(this.currTask.mediaFileList, this.currTask.title);
+                } else if (this.currTask.finishNum + this.currTask.errorNum === this.currTask.rangeDownload.targetSegment) {
+                    this.togglePause(this.currTask, true);
+                }
+
+                callback && callback();
+            });
+        },
+
 
         // 处理ts片段，AES解密、mp4转码
         dealTS(file, index, callback) {
