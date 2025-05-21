@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="https://cdnjs.webstatic.cn/ajax/libs/normalize/8.0.1/normalize.css">
     <link rel="stylesheet" href="./static/css/reset.css">
     <link rel="stylesheet" href="https://cdnjs.webstatic.cn/ajax/libs/animate.css/4.1.1/animate.min.css">
-    <link rel="stylesheet" href="./static/css/style.css">
+    <link rel="stylesheet" href="./static/css/style.css?ver=1.4">
 </head>
 <body>
 <div id="app" v-cloak>
@@ -459,6 +459,7 @@
                             <p>如果下载后无法拖动进度条：对视频使用ffmpeg -c:v copy -c:a copy，可以修复此问题。出现其他异常时可尝试使用ffmpeg进行修复。</p>
                             <h1>五、鸣谢</h1>
                             <p>本工具基于<a href="https://github.com/caiweiming/get-m3u8" target="_blank">get-m3u8项目</a>构建</p>
+                            <p>本工具开源地址<a href="https://github.com/eraycc/M3U8Download" target="_blank">M3U8Download</a></p>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -610,6 +611,52 @@
             </div>
         </div>
     </div>
+    
+<!-- 流选择模态框 -->
+<div class="modal-root" id="modal-stream-select">
+    <div class="modal-mask" :class="{'fade-enter fade-enter-active': modalList['modal-stream-select'].showing, 'fade-leave fade-leave-active': modalList['modal-stream-select'].closing}" v-if="modalList['modal-stream-select'].show"></div>
+    <div tabindex="-1" class="modal-wrap modal-centered" v-show="modalList['modal-stream-select'].show">
+        <div role="dialog" aria-modal="true" class="modal" :class="{'zoom-enter zoom-enter-active': modalList['modal-stream-select'].showing, 'zoom-leave zoom-leave-active': modalList['modal-stream-select'].closing}" v-show="modalList['modal-stream-select'].show" style="width: 520px;">
+            <div tabindex="0" aria-hidden="true" style="width: 0; height: 0; overflow: hidden; outline: none;"></div>
+            <div class="modal-content">
+                <button type="button" class="modal-close" @click="closeModal('modal-stream-select')">
+                    <span class="modal-close-x"><span role="img" aria-label="close" class="icon icon-close modal-close-icon">
+                        <svg fill-rule="evenodd" viewBox="64 64 896 896" focusable="false" data-icon="close" width="1em" height="1em" fill="currentColor" aria-hidden="true">
+                            <path d="M799.86 166.31c.02 0 .04.02.08.06l57.69 57.7c.04.03.05.05.06.08a.12.12 0 010 .06c0 .03-.02.05-.06.09L569.93 512l287.7 287.7c.04.04.05.06.06.09a.12.12 0 010 .07c0 .02-.02.04-.06.08l-57.7 57.69c-.03.04-.05.05-.07.06a.12.12 0 01-.07 0c-.03 0-.05-.02-.09-.06L512 569.93l-287.7 287.7c-.04.04-.06.05-.09.06a.12.12 0 01-.07 0c-.02 0-.04-.02-.08-.06l-57.69-57.7c-.04-.03-.05-.05-.06-.07a.12.12 0 010-.07c0-.03.02-.05.06-.09L454.07 512l-287.7-287.7c-.04-.04-.05-.06-.06-.09a.12.12 0 010-.07c0-.02.02-.04.06-.08l57.7-57.69c.03-.04.05-.05.07-.06a.12.12 0 01.07 0c.03 0 .05.02.09.06L512 454.07l287.7-287.7c.04-.04.06-.05.09-.06a.12.12 0 01.07 0z"></path>
+                        </svg>
+                    </span></span>
+                </button>
+                <div class="modal-header">
+                    <div class="modal-title">选择视频清晰度</div>
+                </div>
+                <div class="modal-body">
+                    <p>检测到多个视频清晰度，请选择一个进行下载：</p>
+                    <div class="stream-list">
+                        <div 
+                            v-for="(stream, index) in streams" 
+                            :key="index" 
+                            class="stream-item" 
+                            @click="selectStream(stream)"
+                        >
+                            <div class="stream-info">
+                                <div class="stream-resolution">{{ stream.resolution }}</div>
+                                <div class="stream-bandwidth">{{ (stream.bandwidth/1000).toFixed(0) }} kbps</div>
+                            </div>
+                            <div class="stream-name">{{ stream.name }}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-default" @click="closeModal('modal-stream-select')">
+                        <span>取 消</span>
+                    </button>
+                </div>
+            </div>
+            <div tabindex="0" aria-hidden="true" style="width: 0; height: 0; overflow: hidden; outline: none;"></div>
+        </div>
+    </div>
+</div>
+
 </div>
 <script src="https://cdnjs.webstatic.cn/ajax/libs/vue/3.4.14/vue.global.prod.js"></script>
 <script src="./static/js/aes-decrypt.js?ver=1.6"></script>
@@ -617,6 +664,6 @@
 <script src="./static/js/StreamSaver.js?ver=1.6"></script>
 <script src="https://cdnjs.webstatic.cn/ajax/libs/hls.js/1.2.7/hls.min.js"></script>
 <script src="https://cdnjs.webstatic.cn/ajax/libs/dplayer/1.27.1/DPlayer.min.js"></script>
-<script src="./static/js/main.js?ver=1.6"></script>
+<script src="./static/js/main.js?ver=1.2.1"></script>
 </body>
 </html>
